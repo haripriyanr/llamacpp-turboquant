@@ -1063,6 +1063,12 @@ static void llama_sampler_dist_apply(struct llama_sampler * smpl, llama_token_da
         }
     }
 
+    // empty candidate set (or NaN-poisoned logits): nothing to sample from.
+    // Picking nothing here used to trip assert(found) below; bail safely.
+    if (cur_p->size == 0) {
+        return;
+    }
+
     // apply softmax to obtain the probabilities
     double sum_cum = 0.0f;
     for (size_t i = 0; i < cur_p->size; ++i) {
@@ -1093,13 +1099,14 @@ static void llama_sampler_dist_apply(struct llama_sampler * smpl, llama_token_da
         }
 
         // normalize probs
-        cur_p->data[i].p /= sum_cum;
+        if (sum_cum > 0.0) {
+            cur_p->data[i].p /= sum_cum;
+        }
     }
 
-    // fallback to the last token (don't think this can happen)
-    assert(found);
+    // fallback to the last token (can happen with NaN/inf probs)
     if (!found) {
-        cur_p->selected = cur_p->size - 1;
+        cur_p->selected = cur_p->size > 0 ? cur_p->size - 1 : 0;
     }
 #else
     // for clarity, this is the same as above but does one pass for normalization and one extra pass for sampling
