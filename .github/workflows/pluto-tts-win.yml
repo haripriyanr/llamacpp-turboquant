@@ -83,7 +83,7 @@ jobs:
           path: pluto-tts-cuda-win.zip
 
   release:
-    needs: [windows-cpu, windows-cuda]
+    needs: [windows-cpu, windows-cuda, windows-vulkan]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -99,3 +99,46 @@ jobs:
           tag_name: ${{ inputs.tag || 'v0.1.0' }}
           files: ./release/*
           fail_on_unmatched_files: true
+  windows-vulkan:
+    runs-on: windows-2022
+    steps:
+      - name: Checkout upstream llama.cpp
+        uses: actions/checkout@v6
+        with:
+          repository: ggml-org/llama.cpp
+          ref: master
+          fetch-depth: 1
+      - name: Install Vulkan SDK
+        shell: pwsh
+        run: |
+          choco install vulkan-sdk -y --no-progress
+          $roots = @("$env:VULKAN_SDK", "$env:ProgramFiles\VulkanSDK", "C:\VulkanSDK") | Where-Object { $_ -and (Test-Path -LiteralPath $_) }
+          $root = $roots | ForEach-Object { Get-ChildItem -LiteralPath $_ -Directory -ErrorAction SilentlyContinue } | Sort-Object Name -Descending | Select-Object -First 1
+          if (-not $root) { throw "Vulkan SDK installation was not found" }
+          $sdk = $root.FullName
+          if (-not (Test-Path -LiteralPath (Join-Path $sdk 'Include\vulkan\vulkan.h'))) { throw "Vulkan headers missing under $sdk" }
+          if (-not (Test-Path -LiteralPath (Join-Path $sdk 'Bin\glslc.exe'))) { throw "glslc missing under $sdk" }
+          "VULKAN_SDK=$sdk" >> $env:GITHUB_ENV
+          "Vulkan_ROOT=$sdk" >> $env:GITHUB_ENV
+          "$sdk\Bin" >> $env:GITHUB_PATH
+      - name: Install Ninja
+        run: choco install ninja -y
+      - name: Build Vulkan
+        shell: cmd
+        run: |
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
+          cmake -S . -B build -G "Ninja Multi-Config" -DGGML_NATIVE=OFF -DGGML_CPU_ALL_VARIANTS=ON -DGGML_VULKAN=ON %CMAKE_ARGS% -DVulkan_ROOT=%VULKAN_SDK%
+          set /A NINJA_JOBS=%NUMBER_OF_PROCESSORS%-1
+          cmake --build build --config Release -j %NINJA_JOBS%
+      - name: Pack
+        shell: pwsh
+        run: |
+          Copy-Item LICENSE ./build/bin/Release/ -ErrorAction SilentlyContinue
+          7z a pluto-tts-vulkan-win.zip ./build/bin/Release/*
+      - name: Upload
+        uses: actions/upload-artifact@v6
+        with:
+          name: pluto-tts-vulkan-win
+          path: pluto-tts-vulkan-win.zip
+
+
