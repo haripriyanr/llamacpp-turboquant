@@ -12,7 +12,7 @@ on:
       - 'pluto-tts-v*'
 
 env:
-  CMAKE_ARGS: "-DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_TOOLS=ON -DLLAMA_BUILD_SERVER=ON"
+  CMAKE_ARGS: "-DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_TOOLS=ON -DLLAMA_BUILD_SERVER=ON -DGGML_BACKEND_DL=ON"
 
 jobs:
   windows-cpu:
@@ -57,13 +57,14 @@ jobs:
         uses: ./.github/actions/windows-setup-cuda
         with:
           cuda_version: '12.4'
+          cuda_arch: 'x64'
       - name: Install Ninja
         run: choco install ninja -y
       - name: Build CUDA
         shell: cmd
         run: |
           call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
-          cmake -S . -B build -G "Ninja Multi-Config" -DGGML_NATIVE=OFF -DGGML_CUDA=ON -DGGML_CUDA_FA_ALL_QUANTS=ON %CMAKE_ARGS%
+          cmake -S . -B build -G "Ninja Multi-Config" -DGGML_NATIVE=OFF -DGGML_CUDA=ON -DGGML_CUDA_FA_ALL_QUANTS=ON -DGGML_VULKAN=OFF %CMAKE_ARGS%
           set /A NINJA_JOBS=%NUMBER_OF_PROCESSORS%-1
           cmake --build build --config Release -j %NINJA_JOBS%
       - name: Pack
@@ -90,11 +91,6 @@ jobs:
           repository: ggml-org/llama.cpp
           ref: master
           fetch-depth: 1
-      - name: Setup Vulkan SDK
-        shell: pwsh
-        run: |
-          choco install vulkan-sdk -y
-          echo "VULKAN_SDK=C:\VulkanSDK\$(Get-ChildItem C:\VulkanSDK | Sort-Object Name -Descending | Select-Object -First 1 -ExpandProperty Name)" >> $env:GITHUB_ENV
       - name: Install Ninja
         run: choco install ninja -y
       - name: Build Vulkan
